@@ -1,0 +1,171 @@
+name: Build QuickJS Native Libraries
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  QUICKJS_REPO: https://github.com/quickjs-ng/quickjs.git
+  QUICKJS_REF: master
+
+jobs:
+  build-linux:
+    name: Linux (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-latest
+            rid: linux-x64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            rid: linux-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout QuickJS
+        run: |
+          git clone --depth=1 --branch ${{ env.QUICKJS_REF }} ${{ env.QUICKJS_REPO }} quickjs-src
+
+      - name: Configure
+        run: |
+          cmake -S quickjs-src -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DQJS_ENABLE_INSTALL=OFF
+
+      - name: Build
+        run: cmake --build build --target qjs --parallel $(nproc)
+
+      - name: Rename artifact
+        run: |
+          mkdir -p artifacts
+          cp build/libqjs.so artifacts/libquickjs.so
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: artifacts/
+
+  build-macos:
+    name: macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: macos-13
+            rid: osx-x64
+            cmake_arch: x86_64
+          - arch: arm64
+            runner: macos-latest
+            rid: osx-arm64
+            cmake_arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout QuickJS
+        run: |
+          git clone --depth=1 --branch ${{ env.QUICKJS_REF }} ${{ env.QUICKJS_REPO }} quickjs-src
+
+      - name: Configure
+        run: |
+          cmake -S quickjs-src -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_arch }} \
+            -DBUILD_SHARED_LIBS=ON \
+            -DQJS_ENABLE_INSTALL=OFF
+
+      - name: Build
+        run: cmake --build build --target qjs --parallel $(sysctl -n hw.logicalcpu)
+
+      - name: Rename artifact
+        run: |
+          mkdir -p artifacts
+          cp build/libqjs.dylib artifacts/libquickjs.dylib
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: artifacts/
+
+  build-windows:
+    name: Windows (${{ matrix.arch }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            rid: win-x64
+            cmake_arch: x64
+          - arch: x86
+            rid: win-x86
+            cmake_arch: Win32
+          - arch: arm64
+            rid: win-arm64
+            cmake_arch: ARM64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout QuickJS
+        run: |
+          git clone --depth=1 --branch ${{ env.QUICKJS_REF }} ${{ env.QUICKJS_REPO }} quickjs-src
+
+      - name: Configure
+        run: |
+          cmake -S quickjs-src -B build `
+            -A ${{ matrix.cmake_arch }} `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_SHARED_LIBS=ON `
+            -DQJS_ENABLE_INSTALL=OFF
+
+      - name: Build
+        run: cmake --build build --target qjs --config Release
+
+      - name: Rename artifact
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts
+          Copy-Item build\Release\qjs.dll artifacts\quickjs.dll
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: artifacts/
+
+  publish:
+    name: Publish artifacts
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+
+      - name: List artifacts
+        run: ls -R artifacts/
+
+      - name: Create release archives
+        run: |
+          for rid_dir in artifacts/native-*; do
+            rid=$(basename "$rid_dir" | sed 's/^native-//')
+            zip -j "quickjs-native-${rid}.zip" "$rid_dir"/*
+          done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: quickjs-native-*.zip
