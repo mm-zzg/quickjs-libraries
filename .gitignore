@@ -1,0 +1,30 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build output
+build/
+dist/
+out/
+
+# QuickJS source (cloned at build time)
+quickjs-src/
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Native libraries (generated artifacts)
+*.dll
+*.so
+*.dylib
+artifacts/
