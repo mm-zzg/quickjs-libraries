@@ -147,7 +147,11 @@ jobs:
     name: Publish artifacts
     needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.ref == 'refs/heads/main' && github.event_name == 'push')
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -165,7 +169,24 @@ jobs:
             zip -j "quickjs-native-${rid}.zip" "$rid_dir"/*
           done
 
+      - name: Determine release metadata
+        id: release_meta
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+            name="${tag}"
+          else
+            tag="main-${GITHUB_RUN_NUMBER}"
+            name="Main build #${GITHUB_RUN_NUMBER} ($(date -u +'%Y-%m-%d %H:%M UTC'))"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.release_meta.outputs.tag }}
+          name: ${{ steps.release_meta.outputs.name }}
+          prerelease: false
+          fail_on_unmatched_files: true
           files: quickjs-native-*.zip
