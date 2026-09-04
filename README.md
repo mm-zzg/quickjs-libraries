@@ -11,7 +11,6 @@ Native shared libraries built from [quickjs-ng/quickjs](https://github.com/quick
 | Windows    | arm64       | `win-arm64`       |
 | Linux      | x64         | `linux-x64`       |
 | Linux      | arm64       | `linux-arm64`     |
-| macOS      | x64         | `osx-x64`         |
 | macOS      | arm64       | `osx-arm64`       |
 
 ## Library Files
